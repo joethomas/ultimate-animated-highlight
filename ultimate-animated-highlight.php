@@ -2,7 +2,7 @@
 /*
 	Plugin Name: Ultimate Animated Highlight
 	Description: Line-by-line animated highlights (marker, line, swoosh) with exact SVG curves and per-line animation.
-	Version: 0.1.0
+	Version: 0.1.1
 	Author: Joe Thomas
 	License: GPLv2 or later
 	Text Domain: ultimate-animated-highlight

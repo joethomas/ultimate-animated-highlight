@@ -11,6 +11,9 @@
 	--uah-color: currentColor;   /* used when color="#hex" or inherited */
 	--uah-height: 0.12em;        /* stroke/line thickness */
 	--uah-offset: 0.18em;        /* vertical offset from baseline */
+	
+	--uah-curve-marker: 0.20;    /* smaller = flatter; try .18–.25 */
+	--uah-curve-swoosh: 0.65;    /* smaller = flatter; try .55–.75 */
 }
 
 .uah-text{ position: relative; z-index: 0; }

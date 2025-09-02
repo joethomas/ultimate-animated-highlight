@@ -88,7 +88,7 @@
 	}
 
 	// Build geometry for requested style, scaled to (w,h) and aligned to baseline yBase.
-	function buildShapeGroup(def, style, w, h, yBase, heightPx, dir){
+	function buildShapeGroup(def, style, w, h, yBase, heightPx, dir, ky){
 		const NS='http://www.w3.org/2000/svg';
 		const g = document.createElementNS(NS,'g');
 
@@ -101,8 +101,9 @@
 			p.setAttribute('stroke-linecap', style === 'marker' ? 'square' : 'round');
 			p.setAttribute('stroke-linejoin','round');
 
+			// scale to fit, then compress vertically by ky
 			const sx = w / def.vw;
-			const sy = h / def.vh;
+			const sy = (h / def.vh) * (ky || 1);
 			const anchorY = ANCHORS[style] || 0;
 			const ty = yBase - (anchorY * sy);
 
@@ -142,6 +143,8 @@
 
 		const cs = getComputedStyle(host);
 		const dir = cs.direction || document.dir || 'ltr';
+		const curveMarker = parseFloat(cs.getPropertyValue('--uah-curve-marker')) || 0.20;
+		const curveSwoosh = parseFloat(cs.getPropertyValue('--uah-curve-swoosh')) || 0.65;
 
 		// Required: data-style (no legacy)
 		const styleName = ((host.dataset && host.dataset.style) || 'marker').toLowerCase();
@@ -204,10 +207,12 @@
 			reveal.style.transformOrigin = (dir === 'rtl') ? '100% 50%' : '0% 50%';
 
 			const white = document.createElementNS(NS, 'rect');
-			white.setAttribute('x', 0);
-			white.setAttribute('y', 0);
-			white.setAttribute('width', r.width);
-			white.setAttribute('height', r.height);
+			// generous padding so strokes aren’t clipped at the bottom (or ends)
+			const pad = Math.ceil(Math.max(2, heightPx));
+			white.setAttribute('x', -pad);
+			white.setAttribute('y', -pad);
+			white.setAttribute('width', r.width + pad*2);
+			white.setAttribute('height', r.height + pad*2);
 			white.setAttribute('fill', '#fff');
 			reveal.appendChild(white);
 
@@ -221,8 +226,11 @@
 
 			const yBase = defaultY(r.height) + offsetPx;
 
+			// choose vertical compression (ky) by style
+			const ky = (styleName === 'marker') ? curveMarker : (styleName === 'swoosh' ? curveSwoosh : 1);
+
 			// geometry group
-			const geo = buildShapeGroup(def, styleName, r.width, r.height, yBase, heightPx, dir);
+			const geo = buildShapeGroup(def, styleName, r.width, r.height, yBase, heightPx, dir, ky);
 			content.appendChild(geo);
 			svg.appendChild(content);
 
