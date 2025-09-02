@@ -1,0 +1,60 @@
+/* Ultimate Animated Highlight (UAH) — v0.1.0 */
+
+.uah{
+	position: relative;
+	display: inline;
+	isolation: isolate;
+	/* defaults (can be overridden inline by the shortcode) */
+	--uah-z: -1;                 /* behind text by default */
+	--uah-opacity: 1;
+	--uah-duration: 1500ms;
+	--uah-color: currentColor;   /* used when color="#hex" or inherited */
+	--uah-height: 0.12em;        /* stroke/line thickness */
+	--uah-offset: 0.18em;        /* vertical offset from baseline */
+}
+
+.uah-text{ position: relative; z-index: 0; }
+
+/* Layer that holds 1 SVG per visual line */
+.uah-layer{
+	position: absolute;
+	inset: 0;
+	pointer-events: none;        /* don't block text selection/clicks */
+	z-index: var(--uah-z);
+}
+
+/* Per-line SVG segment */
+.uah-seg{
+	position: absolute;
+	overflow: visible;           /* keep stroke ends visible when angled */
+	transform-origin: center center;
+	/* Ensure theme color flows into the SVG if no hex var is set */
+	color: var(--uah-color, currentColor);
+}
+
+/* Path-based styles (marker, swoosh) */
+.uah-path{
+	fill: none;
+	stroke: var(--uah-color, currentColor);
+	stroke-opacity: var(--uah-opacity, 1);
+	vector-effect: non-scaling-stroke;  /* keep stroke width true to --uah-height */
+	stroke-linejoin: round;
+}
+
+/* Filled line style */
+.uah-fill{
+	fill: var(--uah-color, currentColor);
+	fill-opacity: var(--uah-opacity, 1);
+}
+
+/* Mask reveal group: JS animates scaleX from 0 -> 1 (LTR) or 1 -> 0 (via origin for RTL) */
+.uah-reveal{
+	transform: scaleX(0);
+	transform-origin: 0% 50%;
+	will-change: transform;
+}
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce){
+	.uah .uah-reveal{ transform: none !important; }
+}

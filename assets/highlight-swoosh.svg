@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg id="highlight-swoosh" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 483 30.6">
+  <!-- Generator: Adobe Illustrator 29.6.0, SVG Export Plug-In . SVG Version: 2.1.1 Build 207)  -->
+  <defs>
+    <style>
+      .st0 {
+        fill: none;
+        stroke: #000;
+        stroke-miterlimit: 10;
+        stroke-width: 5px;
+      }
+    </style>
+  </defs>
+  <path class="st0" d="M.5,28.2C101.7,7.6,292.3-1.2,393.3,3.9c42,2.2,87.5,11.8,87.2,25.7"/>
+</svg>
