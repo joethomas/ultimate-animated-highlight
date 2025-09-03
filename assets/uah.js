@@ -8,15 +8,14 @@
 	// Asset base from localized data or current script path
 	const SCRIPT = document.currentScript || [...document.getElementsByTagName('script')].pop();
 	const SCRIPT_DIR = SCRIPT ? (SCRIPT.src.replace(/\/[^\/]+$/, '/')) : '';
-	const ASSETS_BASE = (typeof window.UAH_ASSETS === 'object' && window.UAH_ASSETS.base) ? window.UAH_ASSETS.base : SCRIPT_DIR;
-
-	const SVG_MAP = (window.UAH_ASSETS && window.UAH_ASSETS.svgs) ? window.UAH_ASSETS.svgs : {
-		marker:'highlight-marker.svg',
-		line:'highlight-line.svg',
-		swoosh:'highlight-swoosh.svg'
-	};
-	const ANCHORS = (window.UAH_ASSETS && window.UAH_ASSETS.anchors) ? window.UAH_ASSETS.anchors : {
-		marker:3, line:0, swoosh:4
+	const CFG = (typeof window.UAH_ASSETS === 'object' && window.UAH_ASSETS) ? window.UAH_ASSETS : {};
+	const ASSETS_BASE = CFG.base ? (CFG.base.endsWith('/') ? CFG.base : CFG.base + '/') : SCRIPT_DIR;
+	const DEFAULT_SVGS = { marker:'highlight-marker.svg', line:'highlight-line.svg', swoosh:'highlight-swoosh.svg' };
+	const DEFAULT_ANCHORS = { marker:3, line:0, swoosh:4 };
+	const fileFor = (style) => (CFG.svgs && CFG.svgs[style]) ? CFG.svgs[style] : (DEFAULT_SVGS[style] || `highlight-${style}.svg`);
+	const anchorFor = (style) => {
+		const v = CFG.anchors ? Number(CFG.anchors[style]) : NaN;
+		return Number.isFinite(v) ? v : (DEFAULT_ANCHORS[style] ?? 0);
 	};
 
 	// Cache loaded svg defs
@@ -25,8 +24,15 @@
 
 	async function loadShape(style){
 		if (SHAPES[style]) return SHAPES[style];
-		const url = ASSETS_BASE + (SVG_MAP[style] || '');
+		const url = ASSETS_BASE + fileFor(style);
 		const res = await fetch(url, { credentials:'same-origin' });
+		if (!res.ok){
+			console.warn('[UAH] Failed to load', url, 'for style', style);
+			// safe fallback: thin bar
+			const def = { vw:100, vh:10, nodeName:'rect', x:0, y:4, width:100, height:2, rx:0, ry:0 };
+			SHAPES[style] = def;
+			return def;
+		}
 		const txt = await res.text();
 		const doc = new DOMParser().parseFromString(txt, 'image/svg+xml');
 		const svg = doc.querySelector('svg');
@@ -52,16 +58,20 @@
 
 	// Length to px relative to host font
 	function lenToPx(el, val){
-		if (!val) return 0;
-		const test = document.createElement('span');
-		test.style.position = 'absolute';
-		test.style.visibility = 'hidden';
-		test.style.width = val;
-		el.appendChild(test);
-		const px = test.getBoundingClientRect().width;
-		test.remove();
-		return px || 0;
-	}
+    	if (!val) return 0;
+    	const s = String(val).trim();
+    	const sign = s.startsWith('-') ? -1 : 1;
+    	const abs = s.replace(/^[-+]/, ''); // measure the absolute value
+    
+    	const test = document.createElement('span');
+    	test.style.position = 'absolute';
+    	test.style.visibility = 'hidden';
+    	test.style.width = abs; // width can't be negative, so we use |value|
+    	el.appendChild(test);
+    	const px = test.getBoundingClientRect().width;
+    	test.remove();
+    	return (px || 0) * sign; // reapply the sign
+    }
 
 	// Merge DOMRects into one rect per visual line
 	function clusterRects(rects){
@@ -88,44 +98,67 @@
 	}
 
 	// Build geometry for requested style, scaled to (w,h) and aligned to baseline yBase.
-	function buildShapeGroup(def, style, w, h, yBase, heightPx, dir, ky){
-		const NS='http://www.w3.org/2000/svg';
-		const g = document.createElementNS(NS,'g');
-
-		if (style === 'marker' || style === 'swoosh'){
-			const p = document.createElementNS(NS,'path');
-			p.setAttribute('class','uah-path');
-			p.setAttribute('d', def.d);
-			p.setAttribute('stroke-width', Math.max(1, heightPx));
-			p.setAttribute('vector-effect', 'non-scaling-stroke');
-			p.setAttribute('stroke-linecap', style === 'marker' ? 'square' : 'round');
-			p.setAttribute('stroke-linejoin','round');
-
-			// scale to fit, then compress vertically by ky
-			const sx = w / def.vw;
-			const sy = (h / def.vh) * (ky || 1);
-			const anchorY = ANCHORS[style] || 0;
-			const ty = yBase - (anchorY * sy);
-
-			let pre = '';
-			if (dir === 'rtl') pre = ` translate(${def.vw} 0) scale(-1 1)`;
-
-			g.setAttribute('transform', `translate(0 ${ty})${pre} scale(${sx} ${sy})`);
-			g.appendChild(p);
-		} else {
-			const r = document.createElementNS(NS,'rect');
-			const height = Math.max(1, heightPx);
-			const y = clamp(yBase - height/2, 0, h - height);
-			r.setAttribute('x', 0);
-			r.setAttribute('y', y);
-			r.setAttribute('width', w);
-			r.setAttribute('height', height);
-			r.setAttribute('rx', Math.min(12, height/3));
-			r.setAttribute('class', 'uah-fill');
-			g.appendChild(r);
-		}
-		return g;
-	}
+    // - ky: vertical curvature scale (0 = flattest; epsilon applied elsewhere)
+    // - capPadFactor: ~0.5 means each end's cap extends ≈ strokeWidth/2
+    // - widthFactor: 0.8..1.2 — 1 = match text width; <1 inset; >1 extend beyond
+    function buildShapeGroup(def, style, w, h, yBase, heightPx, dir, ky, capPadFactor, widthFactor, anchorY){
+    	const NS='http://www.w3.org/2000/svg';
+    	const g = document.createElementNS(NS,'g');
+    
+    	// effective cap padding in px (for stroked ends)
+    	const capPx = Math.max(0, (capPadFactor || 0) * heightPx);
+    
+    	// desired *visible* span (including stroke caps for stroked styles)
+    	const visibleSpan = Math.max(1, w * (Number.isFinite(widthFactor) ? widthFactor : 1));
+    	// center the span within the line box
+    	const leftEdge = (w - visibleSpan) / 2;
+    
+    	if (style === 'marker' || style === 'swoosh'){
+    		const p = document.createElementNS(NS,'path');
+    		p.setAttribute('class','uah-path');
+    		p.setAttribute('d', def.d);
+    		p.setAttribute('stroke-width', Math.max(1, heightPx));
+    		p.setAttribute('vector-effect', 'non-scaling-stroke');
+    		p.setAttribute('stroke-linecap', style === 'marker' ? 'square' : 'round');
+    		p.setAttribute('stroke-linejoin','round');
+    
+    		// vertical scale (allow 0 via epsilon)
+    		const kyEff = (ky === undefined || ky === null) ? 1 : Math.max(0, ky);
+    		const sy = (h / def.vh) * (kyEff === 0 ? 1e-6 : kyEff);
+    
+    		// inner drawing width (path endpoints) after accounting for caps
+    		const innerW = Math.max(1, visibleSpan - 2 * capPx);
+    		// horizontal scale to fit the path viewport
+    		const sx = innerW / def.vw;
+    
+    		// baseline alignment and horizontal placement:
+    		// - start at leftEdge + capPx so visible stroke (with caps) spans 'visibleSpan'
+    		const aY = Number.isFinite(anchorY) ? anchorY : 0;
+    		const ty = yBase - (aY * sy);
+    		const tx = leftEdge + capPx;
+    
+    		let pre = '';
+    		if (dir === 'rtl') pre = ` translate(${def.vw} 0) scale(-1 1)`;
+    
+    		g.setAttribute('transform', `translate(${tx} ${ty})${pre} scale(${sx} ${sy})`);
+    		g.appendChild(p);
+    	} else {
+    		// line (filled rect): no caps to account for; draw the full 'visibleSpan'
+    		const r = document.createElementNS(NS,'rect');
+    		const height = Math.max(1, heightPx);
+    		const y = clamp(yBase - height/2, 0, h - height);
+    
+    		r.setAttribute('x', leftEdge);
+    		r.setAttribute('y', y);
+    		r.setAttribute('width', visibleSpan);
+    		r.setAttribute('height', height);
+    		r.setAttribute('rx', Math.min(12, height/3));
+    		r.setAttribute('class', 'uah-fill');
+    		g.appendChild(r);
+    	}
+    
+    	return g;
+    }
 
 	function robustBoolAttr(val, fallback=true){
 		const s = (val ?? '').toString().toLowerCase().trim();
@@ -143,10 +176,20 @@
 
 		const cs = getComputedStyle(host);
 		const dir = cs.direction || document.dir || 'ltr';
-		const curveMarker = parseFloat(cs.getPropertyValue('--uah-curve-marker')) || 0.20;
-		const curveSwoosh = parseFloat(cs.getPropertyValue('--uah-curve-swoosh')) || 0.65;
+		
+		let curveMarker = parseFloat(cs.getPropertyValue('--uah-curve-marker'));
+        if (!Number.isFinite(curveMarker)) curveMarker = 0.05; else curveMarker = Math.max(0, curveMarker);
+        
+        let curveSwoosh = parseFloat(cs.getPropertyValue('--uah-curve-swoosh'));
+        if (!Number.isFinite(curveSwoosh)) curveSwoosh = 0.28; else curveSwoosh = Math.max(0, curveSwoosh);
+        
+        let widthFactor = parseFloat(cs.getPropertyValue('--uah-width'));
+        if (!Number.isFinite(widthFactor)) widthFactor = 1;
+        widthFactor = Math.min(1.2, Math.max(0.5, widthFactor));
 
-		// Required: data-style (no legacy)
+		const capPadFactor = parseFloat(cs.getPropertyValue('--uah-cap-pad')) || 0.5;
+
+		// Set default highlight style.
 		const styleName = ((host.dataset && host.dataset.style) || 'marker').toLowerCase();
 
 		const animated = robustBoolAttr(host.dataset.animated, true);
@@ -196,26 +239,42 @@
 
 			// defs + mask
 			const defs = document.createElementNS(NS, 'defs');
-			const maskId = 'uahm-' + (++maskIdSeq);
-			const mask = document.createElementNS(NS, 'mask');
-			mask.setAttribute('id', maskId);
-			mask.setAttribute('maskUnits', 'userSpaceOnUse');
-
-			// reveal group scales from 0 -> 1 (LTR) or 1 -> 0 (RTL via origin)
+            const maskId = 'uahm-' + (++maskIdSeq);
+            const mask = document.createElementNS(NS, 'mask');
+            mask.setAttribute('id', maskId);
+			
+			
+			// ensure our coordinates are in the same px space as the SVG
+            mask.setAttribute('maskUnits', 'userSpaceOnUse');
+            mask.setAttribute('maskContentUnits', 'userSpaceOnUse');
+            
+            // extra horizontal reach when width > 1 (per side)
+            const overhang = Math.max(0, (r.width * widthFactor - r.width) / 2);
+			
+			// generous padding so strokes never clip, even with offset/tilt/overhang
+            const padX = Math.ceil(r.height * 1.2 + Math.abs(offsetPx) + heightPx * 3 + 16 + overhang);
+            const padY = Math.ceil(r.height * 1.2 + Math.abs(offsetPx) + heightPx * 3 + 16);
+            
+            // expand the mask region itself — browsers clip to these bounds
+            mask.setAttribute('x', -padX);
+            mask.setAttribute('y', -padY);
+            mask.setAttribute('width', r.width + padX * 2);
+            mask.setAttribute('height', r.height + padY * 2);
+            
+            // reveal group scales from 0 -> 1 (LTR) or 1 -> 0 (RTL via origin)
 			const reveal = document.createElementNS(NS, 'g');
 			reveal.setAttribute('class','uah-reveal');
 			reveal.style.transformOrigin = (dir === 'rtl') ? '100% 50%' : '0% 50%';
 
-			const white = document.createElementNS(NS, 'rect');
-			// generous padding so strokes aren’t clipped at the bottom (or ends)
-			const pad = Math.ceil(Math.max(2, heightPx));
-			white.setAttribute('x', -pad);
-			white.setAttribute('y', -pad);
-			white.setAttribute('width', r.width + pad*2);
-			white.setAttribute('height', r.height + pad*2);
-			white.setAttribute('fill', '#fff');
+			// white rect fills the whole (padded) mask region
+            const white = document.createElementNS(NS, 'rect');
+            white.setAttribute('x', -padX);
+            white.setAttribute('y', -padY);
+            white.setAttribute('width', r.width + padX * 2);
+            white.setAttribute('height', r.height + padY * 2);
+            white.setAttribute('fill', '#fff');
+			
 			reveal.appendChild(white);
-
 			mask.appendChild(reveal);
 			defs.appendChild(mask);
 			svg.appendChild(defs);
@@ -228,9 +287,13 @@
 
 			// choose vertical compression (ky) by style
 			const ky = (styleName === 'marker') ? curveMarker : (styleName === 'swoosh' ? curveSwoosh : 1);
+			
+			// cap inset in px (from your shrink-to-fit logic)
+            const capPadPx = (capPadFactor || 0) * heightPx;
 
 			// geometry group
-			const geo = buildShapeGroup(def, styleName, r.width, r.height, yBase, heightPx, dir, ky);
+			const anchorY = anchorFor(styleName);
+			const geo = buildShapeGroup(def, styleName, r.width, r.height, yBase, heightPx, dir, ky, capPadFactor, widthFactor, anchorY);
 			content.appendChild(geo);
 			svg.appendChild(content);
 

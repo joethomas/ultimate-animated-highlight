@@ -1,19 +1,22 @@
-/* Ultimate Animated Highlight (UAH) — v0.1.0 */
+/* Ultimate Animated Highlight (UAH) — v1.0.0 */
 
 .uah{
 	position: relative;
 	display: inline;
 	isolation: isolate;
-	/* defaults (can be overridden inline by the shortcode) */
-	--uah-z: -1;                 /* behind text by default */
+    
+	/* Defaults (can be overridden inline by the shortcode) */
+	--uah-z: -1;               /* behind text by default */
 	--uah-opacity: 1;
 	--uah-duration: 1500ms;
-	--uah-color: currentColor;   /* used when color="#hex" or inherited */
-	--uah-height: 0.12em;        /* stroke/line thickness */
-	--uah-offset: 0.18em;        /* vertical offset from baseline */
+	--uah-color: currentColor; /* used when color="#hex" or inherited */
+	--uah-height: 0.12em;      /* stroke/line thickness */
+	--uah-offset: 0.18em;      /* vertical offset from baseline */
+	--uah-width: 1;            /* 0.5 to 1.2 (1 = span equals text width) */
+	--uah-curve-marker: 0.05;  /* smaller = flatter; try 0.02–0.2 */
+	--uah-curve-swoosh: 0.28;  /* smaller = flatter; try 0.1–0.5 */
 	
-	--uah-curve-marker: 0.20;    /* smaller = flatter; try .18–.25 */
-	--uah-curve-swoosh: 0.65;    /* smaller = flatter; try .55–.75 */
+	--uah-cap-pad: 0.5;        /* larger = further out to left and right of highlighted text; try 0.45–0.55 */
 }
 
 .uah-text{ position: relative; z-index: 0; }
