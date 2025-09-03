@@ -2,7 +2,7 @@
 /*
 	Plugin Name: Ultimate Animated Highlight
 	Description: Line-by-line animated highlights (marker, line, swoosh) with exact SVG curves and per-line animation.
-	Version: 1.0.0
+	Version: 1.0.1
 	Author: Joe Thomas
 	License: GPLv2 or later
 	Text Domain: ultimate-animated-highlight
@@ -12,6 +12,13 @@
 */
 if ( ! defined('ABSPATH') ) exit;
 
+/* Global Variables & Constants
+==============================================================================*/
+if ( ! function_exists( 'get_plugin_data' ) ) {
+	require_once( ABSPATH . 'wp-admin/includes/plugin.php' );
+}
+$plugin = get_plugin_data( __FILE__, false, false );
+
 define( 'UAH_VER', $plugin['Version'] );
 define( 'UAH_TEXTDOMAIN', $plugin['TextDomain'] );
 define( 'UAH_DIR', plugin_dir_path( __FILE__ ) );
@@ -19,6 +26,8 @@ define( 'UAH_URL', plugin_dir_url( __FILE__ ) );
 define( 'UAH_PATH', plugin_dir_path( __FILE__ ) );
 define( 'UAH_PREFIX', 'uah' );
 
+/* Styles & Scripts
+==============================================================================*/
 add_action('wp_enqueue_scripts', function () {
 	wp_register_style(UAH_PREFIX . '-style', UAH_URL.'assets/uah.css', [], UAH_VER);
 	wp_register_script(UAH_PREFIX . '-script', UAH_URL.'assets/uah.js', [], UAH_VER, true);
@@ -39,6 +48,9 @@ add_action('wp_enqueue_scripts', function () {
 	]);
 }, 5);
 
+/* The Shortcode
+==============================================================================*/
+// Shortcode attribute helpers.
 function uah_bool($v, $default=true){
 	if (is_bool($v)) return $v;
 	$v = strtolower(trim((string)$v));
@@ -47,6 +59,7 @@ function uah_bool($v, $default=true){
 	return $default;
 }
 
+// Build the shortcode.
 add_shortcode('uah_highlight', function($atts, $content=''){
 	wp_enqueue_style('uah-style');
 	wp_enqueue_script('uah-script');
